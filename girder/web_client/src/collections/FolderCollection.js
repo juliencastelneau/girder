@@ -5,7 +5,7 @@ var FolderCollection = Collection.extend({
     resourceName: 'folder',
     model: FolderModel,
 
-    pageLimit: 100
+    pageLimit: 10
 });
 
 export default FolderCollection;

@@ -464,7 +464,7 @@ class User(AccessControlledModel):
             'url': url
         })
         mail_utils.sendMailToAdmins(
-            'Girder: Account pending approval',
+            'Beat-AF: Account pending approval',
             text)
 
     def _sendApprovedEmail(self, user):
@@ -473,7 +473,7 @@ class User(AccessControlledModel):
             'url': mail_utils.getEmailUrlPrefix()
         })
         mail_utils.sendMail(
-            'Girder: Account approved',
+            'Beat-AF: Account approved',
             text,
             [user.get('email')])
 
@@ -488,7 +488,7 @@ class User(AccessControlledModel):
             'url': url
         })
         mail_utils.sendMail(
-            'Girder: Email verification',
+            'Beat-AF: Email verification',
             text,
             [user.get('email')])
 

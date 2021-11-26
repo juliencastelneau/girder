@@ -5,7 +5,7 @@ var FileCollection = Collection.extend({
     resourceName: 'file',
     model: FileModel,
 
-    pageLimit: 100
+    pageLimit: 10
 });
 
 export default FileCollection;

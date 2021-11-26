@@ -172,7 +172,7 @@ class Folder(Resource):
             yield zip.footer()
         return stream
 
-    @access.user(scope=TokenScope.DATA_WRITE)
+    @access.admin(scope=TokenScope.DATA_OWN)
     @filtermodel(model=FolderModel)
     @autoDescribeRoute(
         Description('Update a folder or move it into a new parent.')
@@ -238,7 +238,7 @@ class Folder(Resource):
                 folder, access, save=True, recurse=recurse, user=user,
                 progress=ctx, setPublic=public, publicFlags=publicFlags)
 
-    @access.user(scope=TokenScope.DATA_WRITE)
+    @access.admin(scope=TokenScope.DATA_OWN)
     @filtermodel(model=FolderModel)
     @autoDescribeRoute(
         Description('Create a new folder.')

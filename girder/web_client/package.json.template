@@ -34,7 +34,10 @@
         "toposort": "^1.0.3",
         "uglifyjs-webpack-plugin": "^1.1.6",
         "webpack": "^2.7.0",
-        "whatwg-fetch": "^2.0.4"
+        "whatwg-fetch": "^2.0.4",
+        "dicom-parser": "^1.8.13",
+        "dcmjs": "^0.24.0",
+        "file-saver": "^2.0.5"
     },
     "devDependencies": {
         "babel-plugin-istanbul": "^4.1.5",

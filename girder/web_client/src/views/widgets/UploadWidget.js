@@ -13,6 +13,19 @@ import '@girder/core/stylesheets/widgets/uploadWidget.styl';
 
 import '@girder/core/utilities/jquery/girderEnable';
 import '@girder/core/utilities/jquery/girderModal';
+import dicomParser from 'dicom-parser';
+
+import { saveAs } from 'file-saver';
+
+import dcmjs from 'dcmjs'
+
+const {
+    DicomMetaDictionary,
+    DicomDict,
+    DicomMessage,
+    ReadBufferStream
+} = dcmjs.data;
+const { cleanTags } = dcmjs.anonymizer;
 
 /**
  * This widget is used to upload files to a folder. Pass a folder model
@@ -74,7 +87,6 @@ var UploadWidget = View.extend({
         },
         'drop .g-drop-zone': 'filesDropped'
     },
-
     /**
      * This widget has several configuration options to control its view and
      * behavior. The following keys can be passed in the settings object:
@@ -131,6 +143,11 @@ var UploadWidget = View.extend({
 
         this._browseText = this.multiFile ? 'Browse or drop files here' : 'Browse or drop a file here';
         this._noneSelectedText = this.multiFile ? 'No files selected' : 'No file selected';
+
+        this.on('g:uploadStarted', function () {
+            this._uploadStarted();
+        });
+
     },
 
     render: function () {
@@ -251,6 +268,42 @@ var UploadWidget = View.extend({
         this.$('.g-start-upload').girderEnable(state);
     },
 
+    _uploadStarted: function () {
+        console.log(this.files[0]);
+        const file = this.files[0];
+
+        let reader = new FileReader();
+
+        reader.onload = function (e) {
+            
+            let arrayBuffer = e.target.result;//   new Uint8Array(reader.result);
+            console.log(arrayBuffer)
+            const dicomDict = DicomMessage.readFile(arrayBuffer);
+
+            const dataset = DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
+
+            const tagInfo = dcmjs.data.DicomMetaDictionary.nameMap["PatientName"];
+            const tagNumber = tagInfo.tag,
+                tagString = dcmjs.data.Tag.fromPString(tagNumber).toCleanString();
+        
+            const patientIDTag = dicomDict.dict[tagString];
+            const patientIDValue = patientIDTag.Value;
+        
+            // when
+            cleanTags(dicomDict.dict);
+
+            // var blob = new Blob([dicomDict.write()], {type: "application/octet-stream"});
+            // var fileName = file.name + "_anonymised.dcm";
+            // // saveAs(blob, fileName);
+
+ 
+        }
+        
+        reader.readAsArrayBuffer(this.files[0]);
+        
+        this.uploadNextFile();
+
+    },
     /**
      * Initializes the upload of a file by requesting the upload token
      * from the server. If successful, this will call _uploadChunk to send the

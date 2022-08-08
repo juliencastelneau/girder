@@ -720,7 +720,8 @@ var HierarchyWidget = View.extend({
             el: container,
             parent: this.parentModel,
             parentType: this.parentType,
-            parentView: this
+            parentView: this,
+            overrideStart: true
         }).on('g:uploadFinished', function (info) {
             handleClose('upload');
             this.upload = false;

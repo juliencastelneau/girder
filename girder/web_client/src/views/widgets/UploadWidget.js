@@ -268,41 +268,76 @@ var UploadWidget = View.extend({
         this.$('.g-start-upload').girderEnable(state);
     },
 
+
+    read_file: function (file) {
+        return new Promise((resolve, reject) => {
+          var fr = new FileReader();
+            fr.onload = function (e) {
+                let arrayBuffer = e.target.result;
+                // ///////////////////////////////////////////////////////// \\
+                // VERSION WITH DICOM PARSER LIB                             \\
+                // https://github.com/cornerstonejs/dicomParser              \\
+                //
+                // With this version, the deid value must be shorter than    \\
+                // the original value.                                       \\
+                // ///////////////////////////////////////////////////////// \\
+                
+                // var byteArray = new Uint8Array(arrayBuffer);
+                // const options = { TransferSyntaxUID: '1.2.840.10008.1.2' };
+                // var dataSet = dicomParser.parseDicom(byteArray, options);
+
+                // function anonymize_tag(dataSet, tag, newValue) {
+                //     var element = dataSet.elements[tag];
+                //     for(var i=0; i < element.length; i++) {
+                //         var char = (newValue.length > i) ? newValue.charCodeAt(i) : 32;
+                //         console.log(char);
+                //         dataSet.byteArray[element.dataOffset + i] = char;
+                //     }
+                // }
+
+                // anonymize_tag(dataSet, 'x00100020', 'ANONID'); // Patient Id
+                // anonymize_tag(dataSet, 'x00100010', 'ANON^PATIENT'); // Patient Name
+                // anonymize_tag(dataSet, 'x0020000d', '1.2.3.4'); // StudyInstanceUID
+                // var blob = new Blob([dataSet.byteArray], { type: "application/dicom" });
+
+                // ///////////////////////////////////////////////////////// \\
+                // END OF VERSION WITH DICOM PARSER LIB                      \\
+                // https://github.com/cornerstonejs/dicomParser              \\
+                // ///////////////////////////////////////////////////////// \\
+                
+                // ///////////////////////////////////////////////////////// \\
+                // VERSION WITH dcmjs  LIB                                   \\
+                // https://github.com/dcmjs-org/dcmjs                        \\
+                //                                                           \\
+                // The method cleanTags must be modified to be able to give  \\
+                // a deid patient Name value specific for each new patient   \\
+                // ///////////////////////////////////////////////////////// \\
+                var dicomDict = DicomMessage.readFile(arrayBuffer);
+                cleanTags(dicomDict.dict);
+                var blob = new Blob([dicomDict.write()], { type: "application/octet-stream" });
+                // ///////////////////////////////////////////////////////// \\
+                // END OF VERSION WITH dcmjs  LIB                            \\
+                // https://github.com/dcmjs-org/dcmjs                        \\
+                // ///////////////////////////////////////////////////////// \\
+                
+                var name = file.name;
+                var modified_file = new File([blob], name);
+                resolve(modified_file);
+          };
+          fr.readAsArrayBuffer(file);
+        });
+    },
+    
     _uploadStarted: function () {
-        console.log(this.files[0]);
-        const file = this.files[0];
-
-        let reader = new FileReader();
-
-        reader.onload = function (e) {
-            
-            let arrayBuffer = e.target.result;//   new Uint8Array(reader.result);
-            console.log(arrayBuffer)
-            const dicomDict = DicomMessage.readFile(arrayBuffer);
-
-            const dataset = DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
-
-            const tagInfo = dcmjs.data.DicomMetaDictionary.nameMap["PatientName"];
-            const tagNumber = tagInfo.tag,
-                tagString = dcmjs.data.Tag.fromPString(tagNumber).toCleanString();
-        
-            const patientIDTag = dicomDict.dict[tagString];
-            const patientIDValue = patientIDTag.Value;
-        
-            // when
-            cleanTags(dicomDict.dict);
-
-            // var blob = new Blob([dicomDict.write()], {type: "application/octet-stream"});
-            // var fileName = file.name + "_anonymised.dcm";
-            // // saveAs(blob, fileName);
-
- 
+        let promises = []; // collect all promises
+        for (var file of this.files) {
+          promises.push(this.read_file(file));
         }
-        
-        reader.readAsArrayBuffer(this.files[0]);
-        
-        this.uploadNextFile();
-
+        Promise.all(promises) // wait for the resolutions
+            .then(results => {
+                this.files = results;
+                this.uploadNextFile();
+          })
     },
     /**
      * Initializes the upload of a file by requesting the upload token

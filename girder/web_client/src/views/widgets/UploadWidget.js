@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import _ from 'underscore';
+import _, { reject } from 'underscore';
 
 import FileModel from '@girder/core/models/FileModel';
 import View from '@girder/core/views/View';
@@ -13,11 +13,8 @@ import '@girder/core/stylesheets/widgets/uploadWidget.styl';
 
 import '@girder/core/utilities/jquery/girderEnable';
 import '@girder/core/utilities/jquery/girderModal';
-import dicomParser from 'dicom-parser';
-
-import { saveAs } from 'file-saver';
-
-import dcmjs from 'dcmjs'
+import dcmjs from 'dcmjs';
+import JSZip from 'jszip';
 
 const {
     DicomMetaDictionary,
@@ -143,7 +140,19 @@ var UploadWidget = View.extend({
 
         this._browseText = this.multiFile ? 'Browse or drop files here' : 'Browse or drop a file here';
         this._noneSelectedText = this.multiFile ? 'No files selected' : 'No file selected';
-
+        
+        if (typeof this.parent != "undefined" &&
+            typeof this.parent.attributes != "undefined" &&
+            this.parent.attributes.name === "DICOM") {
+            if (typeof this.parentView != "undefined" &&
+                typeof this.parentView.parentView.collection != "undefined" &&
+                typeof this.parentView.parentView.collection.attributes != "undefined" &&
+                this.parentView.parentView.collection.attributes.name === "MUSIC TV HL") {
+                console.log("HERE WE GO");
+                console.log(this.parent.attributes.name);
+                console.log(this.parentView.parentView.collection.attributes.name);
+            }
+        }
         this.on('g:uploadStarted', function () {
             this._uploadStarted();
         });
@@ -267,78 +276,147 @@ var UploadWidget = View.extend({
     setUploadEnabled: function (state) {
         this.$('.g-start-upload').girderEnable(state);
     },
-
-
+    
     read_file: function (file) {
-        return new Promise((resolve, reject) => {
-          var fr = new FileReader();
+        return new Promise( resolve  => {
+            var fr = new FileReader();
             fr.onload = function (e) {
                 let arrayBuffer = e.target.result;
-                // ///////////////////////////////////////////////////////// \\
-                // VERSION WITH DICOM PARSER LIB                             \\
-                // https://github.com/cornerstonejs/dicomParser              \\
-                //
-                // With this version, the deid value must be shorter than    \\
-                // the original value.                                       \\
-                // ///////////////////////////////////////////////////////// \\
-                
-                // var byteArray = new Uint8Array(arrayBuffer);
-                // const options = { TransferSyntaxUID: '1.2.840.10008.1.2' };
-                // var dataSet = dicomParser.parseDicom(byteArray, options);
+                try {
+                    
+                    var dicomDict = DicomMessage.readFile(arrayBuffer);
+                    var tagsToReplace = {};
+                    var tagNamesToEmpty = ["PatientName", "PatientBirthDate"];
+ 
+                    cleanTags(dicomDict.dict, tagsToReplace, tagNamesToEmpty);
 
-                // function anonymize_tag(dataSet, tag, newValue) {
-                //     var element = dataSet.elements[tag];
-                //     for(var i=0; i < element.length; i++) {
-                //         var char = (newValue.length > i) ? newValue.charCodeAt(i) : 32;
-                //         console.log(char);
-                //         dataSet.byteArray[element.dataOffset + i] = char;
-                //     }
-                // }
+                    var blob = new Blob([dicomDict.write()], { type: "application/octet-stream" });                    
+                    var name = file.name;
+                    var modified_file = new File([blob], name);
+                    resolve(modified_file);
+                } catch (TypeError) {
+                    resolve(file);
+                } 
 
-                // anonymize_tag(dataSet, 'x00100020', 'ANONID'); // Patient Id
-                // anonymize_tag(dataSet, 'x00100010', 'ANON^PATIENT'); // Patient Name
-                // anonymize_tag(dataSet, 'x0020000d', '1.2.3.4'); // StudyInstanceUID
-                // var blob = new Blob([dataSet.byteArray], { type: "application/dicom" });
-
-                // ///////////////////////////////////////////////////////// \\
-                // END OF VERSION WITH DICOM PARSER LIB                      \\
-                // https://github.com/cornerstonejs/dicomParser              \\
-                // ///////////////////////////////////////////////////////// \\
-                
-                // ///////////////////////////////////////////////////////// \\
-                // VERSION WITH dcmjs  LIB                                   \\
-                // https://github.com/dcmjs-org/dcmjs                        \\
-                //                                                           \\
-                // The method cleanTags must be modified to be able to give  \\
-                // a deid patient Name value specific for each new patient   \\
-                // ///////////////////////////////////////////////////////// \\
-                var dicomDict = DicomMessage.readFile(arrayBuffer);
-                cleanTags(dicomDict.dict);
-                var blob = new Blob([dicomDict.write()], { type: "application/octet-stream" });
-                // ///////////////////////////////////////////////////////// \\
-                // END OF VERSION WITH dcmjs  LIB                            \\
-                // https://github.com/dcmjs-org/dcmjs                        \\
-                // ///////////////////////////////////////////////////////// \\
-                
-                var name = file.name;
-                var modified_file = new File([blob], name);
-                resolve(modified_file);
-          };
-          fr.readAsArrayBuffer(file);
+            };
+            fr.readAsArrayBuffer(file);
+        }, reason => {
+            reject(reason)
         });
     },
     
+    uncompressArchiveToAnonymize: function (file) {
+        let promises = [];
+        var jsZip = require('jszip');
+        return jsZip.loadAsync(file).then(function (zip) {
+            for (var filename in zip.files) {
+                if (zip.files[filename].dir) {
+                    delete zip.files[filename]
+                }
+            }
+
+            var anonymizeZipFiles = function (zip, filename) {
+                return new Promise((resolve, reject) => {
+                    var cb = function updateCallback(metadata) {
+                        console.log(metadata)
+                        this.$('.g-progress-current>.progress-bar').css('width',
+                            metadata.percent.toFixed(2) + '%');
+                        this.$('.g-current-progress-message').html(
+                            '<i class="icon-doc-text"/> Anonymization : <b>' +
+                            metadata.percent.toFixed(2) + ' % </b> ');    
+                    }.bind(this);
+    
+                    zip.files[filename].async('ArrayBuffer', cb ).then(function (fileData) {
+                        var name = filename.replace(/^.*[\\\/]/, '');
+                        try {
+                            var dicomDict = DicomMessage.readFile(fileData);
+                            var tagsToReplace = {};
+                            var tagNamesToEmpty = ["PatientName", "PatientBirthDate"];
+                            
+                            cleanTags(dicomDict.dict, tagsToReplace, tagNamesToEmpty);
+
+                            resolve([name, dicomDict.write()]);
+                        } catch (TypeError) {
+                            resolve([name, fileData]);
+                        }
+                    })
+                })
+            }.bind(this);
+            
+            Object.keys(zip.files).forEach(function (filename) {
+                promises.push(anonymizeZipFiles(zip, filename));
+            });
+ 
+            return Promise.all(promises);
+
+        }.bind(this), function (reject) {
+            var html = reject + ' <a class="g-resume-upload"></a>';
+            this.$('.g-upload-error-message').html(html);
+        }.bind(this))
+
+    },
+
+    manage_zip: function (file) {
+        let promises = [];
+        var name = file.name;
+        promises.push(this.uncompressArchiveToAnonymize(file))
+
+        return Promise.all(promises)
+            .then(results => {
+                try {
+                    var filesToCompress = results[0];
+                    var zip = new JSZip();
+                    filesToCompress.forEach(function (info) {
+                        zip.file(info[0], info[1]);
+                    })
+                    var cb = function updateCallback(metadata) {
+                        this.$('.g-progress-current>.progress-bar').css('width',
+                            metadata.percent.toFixed(2) + '%');
+                        if (metadata.currentFile) {
+                            this.$('.g-current-progress-message').html(
+                                '<i class="icon-doc-text"/> Compression <b>' + metadata.currentFile + '</b> ' +
+                                metadata.percent.toFixed(2) + ' %'
+                            );
+                        }
+                    }.bind(this);
+                    
+                    return zip.generateAsync({ type: "blob", mimeType: "application/zip" }, cb).then(function (blob) {
+                        return new File([blob], name, { type: "application/zip" });;
+                    }, function (reject) {
+                        var html = reject + ' <a class="g-resume-upload"></a>';
+                        this.$('.g-upload-error-message').html(html);                    
+                    });    
+                }
+                catch (Error) {
+                    var html = Error + ' <a class="g-resume-upload"></a>';
+                    this.$('.g-upload-error-message').html(html);                    
+                }
+            }, reject => {
+                var html = reject + ' <a class="g-resume-upload"></a>';
+                this.$('.g-upload-error-message').html(html);
+            });
+    },
+
     _uploadStarted: function () {
+
         let promises = []; // collect all promises
-        for (var file of this.files) {
-          promises.push(this.read_file(file));
+        for (var file of this.files) {   
+            if (file.type === "application/zip") {
+                promises.push(this.manage_zip(file)); 
+            }
+            else {
+                promises.push(this.read_file(file));        
+            }
         }
         Promise.all(promises) // wait for the resolutions
             .then(results => {
                 this.files = results;
                 this.uploadNextFile();
-          })
-    },
+            }, reject => {
+                var html = reject + ' <a class="g-resume-upload"></a>';
+                this.$('.g-upload-error-message').html(html);
+            })
+  },
     /**
      * Initializes the upload of a file by requesting the upload token
      * from the server. If successful, this will call _uploadChunk to send the

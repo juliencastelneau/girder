@@ -35,8 +35,8 @@
         "uglifyjs-webpack-plugin": "^1.1.6",
         "webpack": "^2.7.0",
         "whatwg-fetch": "^2.0.4",
-        "dicom-parser": "^1.8.13",
-        "dcmjs": "git+ssh://git@github.com:juliencastelneau/dcmjs.git#cleanTagsTuning"
+        "dcmjs": "^v0.27.0",
+        "jszip": "^3.10.1"
     },
     "devDependencies": {
         "babel-plugin-istanbul": "^4.1.5",
@@ -45,8 +45,7 @@
     },
     "scripts": {
         "build": "grunt",
-        "watch": "grunt --watch",
-        "postinstall": "cd ./node_modules/dcmjs && npm install && npm run build"
+        "watch": "grunt --watch"
     },
     "girder": {
         "plugins": []
